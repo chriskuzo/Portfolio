@@ -369,50 +369,81 @@ function openBlogModal(id) {
 const contactForm = document.getElementById('contact-form');
 const submitBtn   = document.getElementById('submit-btn');
 const formSuccess = document.getElementById('form-success');
+const msgCount    = document.getElementById('msg-count');
+const nameInput   = document.getElementById('f-name');
+const emailInput  = document.getElementById('f-email');
+const msgInput    = document.getElementById('f-message');
 
-contactForm.addEventListener('submit', e => {
+contactForm.addEventListener('submit', async e => {
 	e.preventDefault();
-	if (!validateForm()) return;
+	const firstInvalid = validateForm();
+	if (firstInvalid) {
+		firstInvalid.focus();
+		return;
+	}
 
 	submitBtn.classList.add('loading');
 	submitBtn.disabled = true;
+	showFormStatus('hidden');
 
-	// Simulate async send (integrate a real backend/Formspree endpoint here)
-	setTimeout(() => {
+	try {
+		const response = await fetch(contactForm.action, {
+			method: 'POST',
+			headers: {
+				'Accept': 'application/json'
+			},
+			body: new FormData(contactForm)
+		});
+
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok || result.success === 'false') {
+			throw new Error('send_failed');
+		}
+
+		contactForm.reset();
+		updateMessageCount();
+		clearErrors();
+		showFormStatus('success', 'Message sent. I will get back to you soon.');
+	} catch (err) {
+		showFormStatus('error', 'Message could not be sent right now. Please try again in a minute.');
+	} finally {
 		submitBtn.classList.remove('loading');
 		submitBtn.disabled = false;
-		formSuccess.classList.remove('hidden');
-		contactForm.reset();
-		setTimeout(() => formSuccess.classList.add('hidden'), 6000);
-	}, 1500);
+	}
 });
 
 function validateForm() {
 	clearErrors();
-	let ok = true;
-	const name    = document.getElementById('f-name');
-	const email   = document.getElementById('f-email');
-	const message = document.getElementById('f-message');
+	let firstInvalid = null;
+	const nameValue = nameInput.value.trim();
+	const emailValue = emailInput.value.trim();
+	const messageValue = msgInput.value.trim();
 
-	if (!name.value.trim()) {
-		setError(name, 'err-name', 'Please enter your name.');
-		ok = false;
+	if (!nameValue) {
+		setError(nameInput, 'err-name', 'Please enter your name.');
+		firstInvalid = firstInvalid || nameInput;
+	} else if (nameValue.length < 2) {
+		setError(nameInput, 'err-name', 'Name must be at least 2 characters.');
+		firstInvalid = firstInvalid || nameInput;
 	}
-	if (!email.value.trim()) {
-		setError(email, 'err-email', 'Please enter your email address.');
-		ok = false;
-	} else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-		setError(email, 'err-email', 'Please enter a valid email address.');
-		ok = false;
+
+	if (!emailValue) {
+		setError(emailInput, 'err-email', 'Please enter your email address.');
+		firstInvalid = firstInvalid || emailInput;
+	} else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+		setError(emailInput, 'err-email', 'Please enter a valid email address.');
+		firstInvalid = firstInvalid || emailInput;
 	}
-	if (!message.value.trim()) {
-		setError(message, 'err-message', 'Please enter a message.');
-		ok = false;
-	} else if (message.value.trim().length < 10) {
-		setError(message, 'err-message', 'Message must be at least 10 characters.');
-		ok = false;
+
+	if (!messageValue) {
+		setError(msgInput, 'err-message', 'Please enter a message.');
+		firstInvalid = firstInvalid || msgInput;
+	} else if (messageValue.length < 15) {
+		setError(msgInput, 'err-message', 'Message should be at least 15 characters.');
+		firstInvalid = firstInvalid || msgInput;
 	}
-	return ok;
+
+	return firstInvalid;
 }
 
 function setError(input, errId, msg) {
@@ -425,9 +456,32 @@ function clearErrors() {
 	document.querySelectorAll('.form-error').forEach(el => el.textContent = '');
 }
 
+function showFormStatus(type, message = '') {
+	if (type === 'hidden') {
+		formSuccess.classList.add('hidden');
+		formSuccess.classList.remove('error');
+		formSuccess.innerHTML = '';
+		return;
+	}
+
+	formSuccess.classList.remove('hidden');
+	formSuccess.classList.toggle('error', type === 'error');
+	const icon = type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle';
+	formSuccess.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
+}
+
+function updateMessageCount() {
+	if (!msgCount) return;
+	msgCount.textContent = `${msgInput.value.length} / 1200`;
+}
+
 ['f-name', 'f-email', 'f-message'].forEach(id => {
 	document.getElementById(id).addEventListener('input', function () {
 		this.classList.remove('error');
 		document.getElementById('err-' + id.replace('f-', '')).textContent = '';
+		if (!formSuccess.classList.contains('hidden')) showFormStatus('hidden');
+		if (id === 'f-message') updateMessageCount();
 	});
 });
+
+updateMessageCount();
